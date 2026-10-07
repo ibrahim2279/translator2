@@ -1,0 +1,100 @@
+<!DOCTYPE html>
+<html lang="ar" dir="rtl">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>مترجم روسي ⇄ عربي</title>
+<style>
+:root{--bg:#f5f6f8;--card:#fff;--tx:#1a1d21;--mut:#6b7280;--ac:#2563eb;--bd:#d9dde3;--ok:#15803d}
+@media (prefers-color-scheme:dark){:root{--bg:#111316;--card:#1b1e23;--tx:#eceff3;--mut:#9aa3ae;--ac:#5b8cff;--bd:#2c3139;--ok:#4ade80}}
+*{box-sizing:border-box}
+body{margin:0;background:var(--bg);color:var(--tx);font-family:system-ui,-apple-system,"Segoe UI",Tahoma,sans-serif;padding:14px;max-width:640px;margin-inline:auto}
+h1{font-size:20px;margin:6px 0 12px;text-align:center}
+.card{background:var(--card);border:1px solid var(--bd);border-radius:14px;padding:12px;margin-bottom:12px}
+.lbl{font-size:13px;color:var(--mut);margin-bottom:6px;display:flex;justify-content:space-between;align-items:center}
+textarea{width:100%;min-height:120px;border:0;outline:0;resize:vertical;background:transparent;color:var(--tx);font:inherit;font-size:18px;line-height:1.6}
+.out{min-height:60px;font-size:18px;line-height:1.6;white-space:pre-wrap;word-break:break-word}
+button{font:inherit;font-size:16px;border:1px solid var(--bd);background:var(--card);color:var(--tx);border-radius:12px;padding:12px 14px;cursor:pointer}
+button.main{width:100%;background:var(--ac);border-color:var(--ac);color:#fff;font-weight:600;margin-bottom:12px}
+button.s{padding:2px 10px;font-size:13px}
+button:disabled{opacity:.6}
+.err{color:#d33;font-size:14px;margin-top:6px}
+.chk{margin-top:10px;padding-top:10px;border-top:1px dashed var(--bd)}
+</style>
+</head>
+<body>
+<h1>مترجم روسي ⇄ عربي</h1>
+<div class="card">
+  <div class="lbl"><span id="dirLbl">اكتب بالعربي أو الروسي</span><span><button class="s" id="paste">لصق</button> <button class="s" id="clr">مسح</button></span></div>
+  <textarea id="inp" placeholder="اكتب أو الصق الرسالة هنا..."></textarea>
+</div>
+<button class="main" id="go">ترجم</button>
+<div class="card">
+  <div class="lbl"><span>الترجمة</span><button class="s" id="cp">نسخ</button></div>
+  <div class="out" id="out"></div>
+  <div id="prBox" hidden>
+    <div class="lbl" style="margin-top:10px"><span>النطق بالحروف العربية</span></div>
+    <div class="out" id="pr" dir="rtl" style="min-height:0;color:var(--mut);font-size:16px"></div>
+  </div>
+  <div class="chk" id="chkBox" hidden>
+    <button class="s" id="chk" style="padding:8px 14px;font-size:14px">تحقق: ترجمها لي راجعة للعربي</button>
+    <div class="out" id="back" dir="rtl" style="min-height:0;margin-top:8px;color:var(--ok);font-size:16px"></div>
+  </div>
+  <div class="err" id="err"></div>
+</div>
+
+<script>
+const $=id=>document.getElementById(id);
+const isRu=s=>(s.match(/[\u0400-\u04FF]/g)||[]).length>(s.match(/[\u0600-\u06FF]/g)||[]).length;
+let lastRu="";
+
+function upd(){
+  const v=$("inp").value.trim();
+  $("dirLbl").textContent=!v?"اكتب بالعربي أو الروسي":isRu(v)?"روسي ← عربي":"عربي ← روسي";
+  $("inp").dir=isRu(v)?"ltr":"rtl";
+}
+function reset(){$("out").textContent="";$("pr").textContent="";$("back").textContent="";$("prBox").hidden=true;$("chkBox").hidden=true;$("err").textContent=""}
+$("inp").addEventListener("input",upd);
+$("clr").onclick=()=>{$("inp").value="";reset();upd()};
+$("paste").onclick=async()=>{
+  try{const t=await navigator.clipboard.readText();if(t){$("inp").value=t;upd()}}
+  catch(e){$("err").textContent="المتصفح منع اللصق التلقائي، اضغط مطولًا على الخانة والصق يدويًا."}
+};
+$("cp").onclick=async()=>{
+  try{await navigator.clipboard.writeText($("out").textContent);$("cp").textContent="تم ✓"}catch(e){$("cp").textContent="حدد وانسخ"}
+  setTimeout(()=>$("cp").textContent="نسخ",1500);
+};
+
+async function api(body){
+  const r=await fetch("/api/translate",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify(body)});
+  const d=await r.json();
+  if(!r.ok)throw new Error(d.error||"err");
+  return d.text.trim();
+}
+
+$("go").onclick=async()=>{
+  const txt=$("inp").value.trim();if(!txt)return;
+  const ru=isRu(txt);
+  reset();$("out").dir=ru?"rtl":"ltr";
+  $("go").disabled=true;$("go").textContent="جارٍ الترجمة...";
+  try{
+    const t=await api({text:txt,ru});
+    const [a,b]=t.split("|||");
+    $("out").textContent=a.trim();
+    if(!ru){
+      lastRu=a.trim();$("chkBox").hidden=false;
+      if(b&&b.trim()){$("pr").textContent=b.trim();$("prBox").hidden=false}
+    }
+  }catch(e){$("err").textContent="حصلت مشكلة. جرب تاني بعد شوية."}
+  $("go").disabled=false;$("go").textContent="ترجم";
+};
+
+$("chk").onclick=async()=>{
+  $("chk").disabled=true;$("back").textContent="جارٍ التحقق...";
+  try{$("back").textContent="المعنى بالعربي: "+await api({text:lastRu,check:true})}
+  catch(e){$("back").textContent="فشل التحقق، جرب تاني."}
+  $("chk").disabled=false;
+};
+</script>
+</body>
+</html>
